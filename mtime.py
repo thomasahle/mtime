@@ -5,6 +5,7 @@ import argparse
 import collections
 import datetime
 import requests
+import time
 from bs4 import BeautifulSoup
 from requests_ntlm import HttpNtlmAuth
 
@@ -32,6 +33,7 @@ class MTime:
         self.session.__exit__(*args)
 
     def connect(self, user):
+        self.user = user
         self.session.auth = HttpNtlmAuth(
                 'itu\\'+ user.username, user.password, self.session)
         return self.session.get('https://mtime.itu.dk/')
@@ -59,7 +61,6 @@ class MTime:
         if r.status_code != 200:
             return r.status_code, []
         soup = BeautifulSoup(r.text, 'html.parser')
-
         table = []
         for tr in soup.div.table.tbody.find_all('tr'):
             if not 'edit' in tr.attrs['class']:
@@ -84,6 +85,35 @@ class MTime:
             table.append((account, days))
         return r.status_code, table
 
+    def userApprove(self, date, comment=''):
+        form = {
+            'selectedUser':self.user.username.upper(),
+            'canManagerApprove':'false',
+            'canUnapprove':'false',
+            'managerCheckedById':'',
+            'day':'1',
+            'month':date.month,
+            'year':date.year,
+            'autoCalcInfoStr':'',
+            'manualTransfer':'',
+            'comment':comment,
+            'role':'',
+            '_':int(time.time()*1000)
+        }
+        url = 'https://mtime.itu.dk/Summary/Overview/UserApprove'
+        # Come on mtime. How is this a get request?
+        r = self.session.get(url, params=form)
+        if r.status_code != 200:
+            return r.status_code
+        #form = { '_':int(time.time()*1000) }
+        #url = 'https://mtime.itu.dk/Summary/Overview/UserApproveDialog'
+        #r = self.session.get(url, params=form)
+        #if r.status_code != 200:
+        #    return r.status_code
+        #soup = BeautifulSoup(r.text, 'html.parser')
+        #print('Resultat:', soup.text)
+        return r.status_code
+
 def main():
     parser = argparse.ArgumentParser(description='Script for managing mtime by the terminal.')
 
@@ -96,6 +126,8 @@ def main():
 
     parser.add_argument('--update', type=str, help='Use with the value account:alias:hours, \
             such as 8000:100:2,4, to update account 8000 to 2,4 hours for the given date.')
+    parser.add_argument('--approve', action='store_true', help='Approves the month. Can\'t be undone. Unless it fails.')
+    parser.add_argument('--comment', type=str, default='', help='If approving, this is the comment added to your aprovement.')
 
     parser.add_argument('--show-accounts', action='store_true', help='Prints a list of your possible accounts.')
     parser.add_argument('--show-table', action='store_true', help='Prints a table of your work this month.')
@@ -119,6 +151,11 @@ def main():
             err = m.sendUpdate(date, account, hours)
             assert err == 200, 'Updating failed'
             print('Updated {} on {} to {} hours'.format(accountNo, formatDate(date, 'ymd'), hours))
+
+        if args.approve:
+            print('Approving with comment "{}"...'.format(args.comment))
+            err = m.userApprove(date)
+            assert err == 200, 'Updating failed'
 
         if args.show_accounts:
             print('Getting Schema for {}...'.format(formatDate(date, 'ymd')))
