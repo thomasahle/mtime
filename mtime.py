@@ -10,16 +10,8 @@ from requests_ntlm import HttpNtlmAuth
 
 User = collections.namedtuple('User', 'username, password')
 Account = collections.namedtuple('Account', 'text, accountNo, aliasId')
-Day = collections.namedtuple('Day', 'date, enabled, type')
+Day = collections.namedtuple('Day', 'date, enabled, type, hours')
 HDAY, WDAY, NDAY = range(3)
-
-#GEN_ACC = Account('General', 1001, 165)
-#SSS_ACC = Account('SSS', 8226, 214)
-
-def connectSession(session, user):
-    print('Connecting...')
-    session.auth = HttpNtlmAuth('itu\\'+ user.username, user.password, session)
-    return session.get('https://mtime.itu.dk/')
 
 def formatDate(date, kind):
     if kind == 'ymd': return '{}-{}-{}'.format(date.year, date.month, date.day)
@@ -30,12 +22,21 @@ def parseDate(string, kind):
     if kind == 'ymd': return datetime.date(a, b, c)
     if kind == 'mdy': return datetime.date(c, a, b)
 
-def sendUpdate (user, date, account, hours):
-    with requests.Session() as session:
-        r = connectSession(session, user)
-        if r.status_code != 200:
-            return r.status_code
-        soup = BeautifulSoup(r.text, 'html.parser')
+class MTime:
+    def __init__(self):
+        self.session = requests.Session()
+    def __enter__(self):
+        self.session.__enter__()
+        return self
+    def __exit__(self, *args):
+        self.session.__exit__(*args)
+
+    def connect(self, user):
+        self.session.auth = HttpNtlmAuth(
+                'itu\\'+ user.username, user.password, self.session)
+        return self.session.get('https://mtime.itu.dk/')
+
+    def sendUpdate (self, date, account, hours):
         form = {
             'activeUserId': -1,
             'hourHundredths': 'true',
@@ -47,20 +48,18 @@ def sendUpdate (user, date, account, hours):
             'accountNo': account.accountNo,
             'hours': hours
         }
-        r = session.post('https://mtime.itu.dk/Registration/Schema/SaveData', data=form)
+        url = 'https://mtime.itu.dk/Registration/Schema/SaveData'
+        r = self.session.post(url, data=form)
         return r.status_code
 
-def getTable(user, date):
-    with requests.Session() as session:
-        r = connectSession(session, user)
-        if r.status_code != 200:
-            return r.status_code, []
-        print('Getting Schema for {}...'.format(formatDate(date, 'ymd')))
+    def getTable(self, date):
         form = { 'selectedDate': formatDate(date, 'dmy') }
-        r = session.get('https://mtime.itu.dk/Registration/Schema/Schema', params=form)
+        url = 'https://mtime.itu.dk/Registration/Schema/Schema'
+        r = self.session.get(url, params=form)
         if r.status_code != 200:
             return r.status_code, []
         soup = BeautifulSoup(r.text, 'html.parser')
+
         table = []
         for tr in soup.div.table.tbody.find_all('tr'):
             if not 'edit' in tr.attrs['class']:
@@ -81,10 +80,9 @@ def getTable(user, date):
                     day_type = HDAY
                 else: day_type = NDAY
                 enabled = 'enabled' in td.attrs['class']
-                days.append((Day(date, enabled, day_type), hours))
+                days.append(Day(date, enabled, day_type, hours))
             table.append((account, days))
         return r.status_code, table
-    return -1, []
 
 def main():
     parser = argparse.ArgumentParser(description='Script for managing mtime by the terminal.')
@@ -110,35 +108,46 @@ def main():
     user = User(username, password)
     date = parseDate(args.date, 'ymd')
 
-    if args.update:
-        accountNo, aliasId, hours = args.update.split(':')
-        account = Account('', accountNo, aliasId)
-        err = sendUpdate (user, date, account, hours)
-        assert err == 200, 'Updating failed'
-        print('Updated {} on {} to {} hours'.format(accountNo, formatDate(date, 'ymd'), hours))
+    with MTime() as m:
+        print('Connecting...')
+        m.connect(user)
 
-    if args.show_accounts:
-        err, table = getTable(user, date)
-        assert err == 200, 'Getting the table failed'
-        for acc, vals in table:
-            print(acc.text, 'AliasId:', acc.aliasId)
+        if args.update:
+            accountNo, aliasId, hours = args.update.split(':')
+            account = Account('', accountNo, aliasId)
+            print('Sending update...')
+            err = m.sendUpdate(date, account, hours)
+            assert err == 200, 'Updating failed'
+            print('Updated {} on {} to {} hours'.format(accountNo, formatDate(date, 'ymd'), hours))
 
-    if args.show_table:
-        err, table = getTable(user, date)
-        assert err == 200, 'Getting the table failed'
-        print(' '*12, end=' ')
-        for acc, _ in table:
-            print(acc.text, end='; ')
-        print()
-        for row in zip(*[vals for acc, vals in table]):
-            day = row[0][0]
-            print(formatDate(day.date, 'ymd').rjust(10), end=' ')
-            if day.type == HDAY: print('H', end=' ')
-            elif day.type == WDAY: print('W', end=' ')
-            else: print(' ', end=' ')
-            for i, (_, hours) in enumerate(row):
-                print(hours.rjust(len(table[i][0].text)), end='  ')
+        if args.show_accounts:
+            print('Getting Schema for {}...'.format(formatDate(date, 'ymd')))
+            err, table = m.getTable(date)
+            assert err == 200, 'Getting the table failed'
+            for acc, vals in table:
+                print(acc.text, 'AliasId:', acc.aliasId)
+
+        if args.show_table:
+            print('Getting Schema for {}...'.format(formatDate(date, 'ymd')))
+            err, table = m.getTable(date)
+            assert err == 200, 'Getting the table failed'
+            print(' '*12, end=' ')
+            for acc, _ in table:
+                print(acc.text, end='; ')
             print()
+            for row in zip(*[vals for acc, vals in table]):
+                main_day = row[0]
+                print(formatDate(main_day.date, 'ymd').rjust(10), end=' ')
+                if main_day.type == HDAY: print('H', end=' ')
+                elif main_day.type == WDAY: print('W', end=' ')
+                else: print(' ', end=' ')
+                for i, day in enumerate(row):
+                    print(day.hours.rjust(len(table[i][0].text)), end='  ')
+                print()
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except requests.exceptions.ConnectionError as e:
+        print('Problems connecting', e)
+
