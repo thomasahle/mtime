@@ -74,16 +74,19 @@ class MTime:
             for td in tr.find_all('td'):
                 if not 'data' in td.attrs['class']:
                     continue
-                year, month, day, aliasid = td.div.input.attrs['id'].split('_')
-                date = datetime.date(int(year), int(month), int(day))
-                hours = td.div.input.attrs['value']
-                if 'wday' in td.attrs['class']:
-                    day_type = WDAY
-                elif 'hday' in td.attrs['class']:
-                    day_type = HDAY
-                else: day_type = NDAY
+                day_type = NDAY
+                for key, value in (('wday',WDAY), ('hday',HDAY)):
+                    if key in td.attrs['class']:
+                        day_type = value
                 enabled = 'enabled' in td.attrs['class']
+                hours = td.div.span.text.strip()
+                day = date.replace(day=len(days)+1)
                 days.append(Day(date, enabled, day_type, hours))
+                # Some tests
+                if enabled:
+                    assert td.div.input.attrs['id'] == '{}_{}_{}_{}'.format(
+                            date.year, date.month, day.day, account.aliasId)
+                    assert hours == td.div.input.attrs['value']
             table.append((account, days))
         return r.status_code, table
 
@@ -165,9 +168,14 @@ def main():
             print('Getting Schema for {}...'.format(formatDate(date, 'ymd')))
             err, table = m.getTable(date)
             assert err == 200, 'Getting the table failed'
+            print()
+            for acc, vals in table:
+                print(acc.text, 'AliasId:', acc.aliasId)
+            print()
             print(' '*12, end=' ')
-            for acc, _ in table:
-                print(acc.text, end='; ')
+            titles = ['{}:{}'.format(a.accountNo, a.aliasId) for a, _ in table]
+            for title in titles:
+                print(title, end='  ')
             print()
             for row in zip(*[vals for acc, vals in table]):
                 main_day = row[0]
@@ -176,7 +184,7 @@ def main():
                 elif main_day.type == WDAY: print('W', end=' ')
                 else: print(' ', end=' ')
                 for i, day in enumerate(row):
-                    print(day.hours.rjust(len(table[i][0].text)), end='  ')
+                    print(day.hours.rjust(len(titles[i])), end='  ')
                 print()
 
 if __name__ == '__main__':
