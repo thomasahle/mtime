@@ -80,12 +80,12 @@ class MTime:
                         day_type = value
                 enabled = 'enabled' in td.attrs['class']
                 hours = td.div.span.text.strip()
-                day = date.replace(day=len(days)+1)
-                days.append(Day(date, enabled, day_type, hours))
+                entry_date = date.replace(day=len(days)+1)
+                days.append(Day(entry_date, enabled, day_type, hours))
                 # Some tests
                 if enabled:
                     assert td.div.input.attrs['id'] == '{}_{}_{}_{}'.format(
-                            date.year, date.month, day.day, account.aliasId)
+                            date.year, date.month, entry_date.day, account.aliasId)
                     assert hours == td.div.input.attrs['value']
             table.append((account, days))
         return r.status_code, table
