@@ -23,6 +23,7 @@ def parseDate(string, kind):
     a, b, c = map(int, string.split('-'))
     if kind == 'ymd': return datetime.date(a, b, c)
     if kind == 'mdy': return datetime.date(c, a, b)
+    if kind == 'dmy': return datetime.date(c, b, a)
 
 class MTime:
     def __init__(self):
