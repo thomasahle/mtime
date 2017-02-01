@@ -4,6 +4,7 @@
 import argparse
 import collections
 import datetime
+import getpass
 import requests
 import time
 from bs4 import BeautifulSoup
@@ -105,20 +106,13 @@ class MTime:
         r = self.session.get(url, params=form)
         if r.status_code != 200:
             return r.status_code
-        #form = { '_':int(time.time()*1000) }
-        #url = 'https://mtime.itu.dk/Summary/Overview/UserApproveDialog'
-        #r = self.session.get(url, params=form)
-        #if r.status_code != 200:
-        #    return r.status_code
-        #soup = BeautifulSoup(r.text, 'html.parser')
-        #print('Resultat:', soup.text)
         return r.status_code
 
 def main():
     parser = argparse.ArgumentParser(description='Script for managing mtime by the terminal.')
 
     parser.add_argument('--username', type=str, help='From your email, such as pagh. Dont use @itu.dk.')
-    parser.add_argument('--password', type=str, help='Your mtime password.')
+    parser.add_argument('--password', type=str, help='Your mtime password. Ignore this if you don\'t want your password in your shell history.')
 
     defdate = formatDate(datetime.date.today(), 'ymd')
     parser.add_argument('--date', type=str, help='The date you want to access, such as 2017-12-31.\
@@ -126,17 +120,19 @@ def main():
 
     parser.add_argument('--update', type=str, help='Use with the value account:alias:hours, \
             such as 8000:100:2,4, to update account 8000 to 2,4 hours for the given date.')
-    parser.add_argument('--approve', action='store_true', help='Approves the month. Can\'t be undone. Unless it fails.')
-    parser.add_argument('--comment', type=str, default='', help='If approving, this is the comment added to your aprovement.')
+    parser.add_argument('--approve', type=str, metavar='COMMENT', nargs='?', const='', help='Approves the month. Can\'t be undone. Unless it fails. The comment is optional.')
 
     parser.add_argument('--show-accounts', action='store_true', help='Prints a list of your possible accounts.')
     parser.add_argument('--show-table', action='store_true', help='Prints a table of your work this month.')
 
     args = parser.parse_args()
 
-
     username = args.username
+    if username is None:
+        username = input('Username: ')
     password = args.password
+    if password is None:
+        password = getpass.getpass('Password: ')
     user = User(username, password)
     date = parseDate(args.date, 'ymd')
 
@@ -152,9 +148,9 @@ def main():
             assert err == 200, 'Updating failed'
             print('Updated {} on {} to {} hours'.format(accountNo, formatDate(date, 'ymd'), hours))
 
-        if args.approve:
-            print('Approving with comment "{}"...'.format(args.comment))
-            err = m.userApprove(date)
+        if args.approve is not None:
+            print('Approving with comment "{}"...'.format(args.approve))
+            err = m.userApprove(date, comment=args.approve)
             assert err == 200, 'Updating failed'
 
         if args.show_accounts:
