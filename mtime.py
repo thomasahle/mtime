@@ -107,7 +107,7 @@ class MTime:
         }
         url = 'https://mtime.itu.dk/Summary/Overview/UserApprove'
         # Come on mtime. How is this a get request?
-        r = self.session.get(url, params=form)
+        r = self.session.post(url, params=form)
         if r.status_code != 200:
             return r.status_code
         return r.status_code
