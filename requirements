@@ -1,0 +1,4 @@
+python-dateutil
+requests
+requests-ntlm
+bs4

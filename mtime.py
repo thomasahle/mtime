@@ -64,7 +64,7 @@ class MTime:
             return r.status_code, []
         soup = BeautifulSoup(r.text, 'html.parser')
         table = []
-        for tr in soup.div.table.tbody.find_all('tr'):
+        for tr in soup.find(id='RegSchemaTableBody').table.tbody.find_all('tr'):
             if not 'edit' in tr.attrs['class']:
                 continue
             account = Account(tr.td.text.strip(),
